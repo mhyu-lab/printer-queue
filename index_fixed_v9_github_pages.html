@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>프린터 대기열</title>
+<style>
+  :root{
+    --bg:#1B1E24;
+    --card:#242830;
+    --card-border:#363B46;
+    --text:#ECEAE4;
+    --muted:#8B909C;
+    --idle:#5FBF8B;
+    --idle-dim:#2C3A33;
+    --printing:#E8A33D;
+    --printing-dim:#3D3325;
+    --danger:#D9695F;
+    --accent:#6FA8DC;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+    padding:28px 16px 60px;
+  }
+  .wrap{max-width:920px;margin:0 auto;}
+  header{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:16px;
+    margin-bottom:12px;
+    flex-wrap:wrap;
+  }
+  h1{font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:-0.01em;}
+  .sub{color:var(--muted);font-size:13px;margin:0;}
+  .me-box{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:8px 10px;
+  }
+  .me-box label{font-size:12px;color:var(--muted);white-space:nowrap;}
+  .me-box input{
+    background:transparent;
+    border:none;
+    color:var(--text);
+    font-size:14px;
+    width:110px;
+    outline:none;
+  }
+  .hero{
+    margin:0 0 12px;
+    aspect-ratio:16/9;
+    overflow:hidden;
+    background:#11151A;
+    border:1px solid var(--card-border);
+    border-radius:14px;
+  }
+  .hero img{
+    display:block;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+  }
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media (max-width:640px){.grid{grid-template-columns:1fr;}}
+  .card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:14px;
+    padding:18px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .printer-name{font-size:16px;font-weight:700;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:7px;}
+  .dot.idle{background:var(--idle);box-shadow:0 0 0 4px var(--idle-dim);}
+  .dot.printing{background:var(--printing);box-shadow:0 0 0 4px var(--printing-dim);}
+  .badge{font-size:12px;padding:4px 9px;border-radius:999px;display:flex;align-items:center;}
+  .badge.idle{color:var(--idle);background:var(--idle-dim);}
+  .badge.printing{color:var(--printing);background:var(--printing-dim);}
+  .job-info{font-size:13px;color:var(--muted);line-height:1.6;}
+  .job-info b{color:var(--text);font-weight:600;}
+  .timer{font-family:var(--mono);font-size:26px;font-weight:600;letter-spacing:0.02em;}
+  .timer.over{color:var(--printing);}
+  .completion-time{
+    margin-top:-8px;
+    color:var(--muted);
+    font-family:var(--mono);
+    font-size:13px;
+  }
+  .row{display:flex;gap:8px;flex-wrap:wrap;}
+  button{
+    font-family:var(--sans);
+    font-size:13px;
+    font-weight:600;
+    border-radius:9px;
+    padding:9px 13px;
+    border:1px solid var(--card-border);
+    background:#2B303A;
+    color:var(--text);
+    cursor:pointer;
+  }
+  button:hover{filter:brightness(1.12);}
+  button.primary{background:var(--accent);color:#132233;border-color:var(--accent);}
+  button.warn{background:var(--printing);color:#2A1E08;border-color:var(--printing);}
+  button.ghost{background:transparent;}
+  button:disabled{opacity:0.4;cursor:not-allowed;}
+  .divider{height:1px;background:var(--card-border);margin:2px 0;}
+  .queue-title{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;}
+  .queue-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+  .queue-list li{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:#1E2229;
+    border:1px solid var(--card-border);
+    border-radius:8px;
+    padding:7px 10px;
+    font-size:13px;
+  }
+  .queue-list li .pos{font-family:var(--mono);color:var(--muted);margin-right:8px;}
+  .queue-list li.me{border-color:var(--accent);}
+  .empty-queue{font-size:13px;color:var(--muted);font-style:normal;padding:8px 0;}
+  .queue-first-start{
+    cursor:pointer;
+    border-color:var(--accent) !important;
+    background:#202A35 !important;
+  }
+  .queue-first-start:hover{filter:brightness(1.12);}
+  .start-hint{
+    display:inline-block;
+    margin-left:8px;
+    font-size:11px;
+    font-weight:700;
+    color:var(--accent);
+    white-space:nowrap;
+  }
+
+  .inline-form{
+    background:#1E2229;
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:12px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .inline-form .fields{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(170px,1.15fr);
+    gap:8px;
+  }
+  .inline-form input,
+  .inline-form select{
+    width:100%;
+    min-width:0;
+    background:#161A20;
+    border:1px solid var(--card-border);
+    color:var(--text);
+    border-radius:7px;
+    padding:8px 9px;
+    font-family:var(--sans);
+    font-size:13px;
+    outline:none;
+    color-scheme:dark;
+  }
+  .inline-form input:focus,
+  .inline-form select:focus{border-color:var(--accent);}
+  .inline-form .name-display{
+    width:100%;
+    min-width:0;
+    background:#161A20;
+    border:1px solid var(--card-border);
+    color:var(--text);
+    border-radius:7px;
+    padding:8px 9px;
+    font-size:13px;
+    display:flex;
+    align-items:center;
+  }
+  .inline-form .name-display.warn-text{
+    color:var(--danger);
+    border-color:var(--danger);
+  }
+  .checkbox-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:13px;
+    color:var(--text);
+    cursor:pointer;
+  }
+  .checkbox-row input[type="checkbox"]{
+    width:16px;
+    height:16px;
+    accent-color:var(--accent);
+    cursor:pointer;
+  }
+  .leave-tag{
+    display:inline-block;
+    font-size:10px;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:999px;
+    background:var(--printing-dim);
+    color:var(--printing);
+    margin-left:6px;
+    white-space:nowrap;
+  }
+  @media (max-width:390px){
+    .inline-form .fields{grid-template-columns:1fr;}
+  }
+  .form-actions{display:flex;gap:8px;justify-content:flex-end;}
+  .note{font-size:12px;color:var(--muted);margin-top:20px;line-height:1.6;}
+  .toast{
+    position:fixed;
+    left:50%;
+    bottom:24px;
+    transform:translateX(-50%);
+    background:#2B303A;
+    border:1px solid var(--accent);
+    color:var(--text);
+    padding:10px 16px;
+    border-radius:10px;
+    font-size:13px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.25s ease;
+    max-width:90vw;
+    text-align:center;
+  }
+  .toast.show{opacity:1;}
+  .status-line{font-size:12px;color:var(--muted);text-align:center;margin-top:14px;}
+  button.small{font-size:12px;padding:6px 10px;color:var(--muted);}
+  button.small:hover{color:var(--danger);border-color:var(--danger);}
+
+  /* ---------- 타임라인(간트차트) 뷰 ---------- */
+  .timeline-section{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:14px;
+    margin:0 0 16px;
+    overflow:hidden;
+  }
+  .timeline-title{
+    font-size:13px;
+    font-weight:700;
+    color:var(--text);
+    padding:12px 16px 0;
+  }
+  .timeline-body{
+    display:flex;
+    padding:10px 0 14px;
+  }
+  .tl-labels{
+    flex:0 0 128px;
+    width:128px;
+  }
+  .tl-label-spacer{height:38px;}
+  .tl-label-row{
+    height:64px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:2px;
+    padding:0 12px;
+    border-top:1px solid var(--card-border);
+  }
+  .tl-label-name{font-size:13px;font-weight:700;color:var(--text);}
+  .tl-label-status{font-size:11px;color:var(--muted);}
+  .tl-label-status.printing{color:var(--printing);}
+  .tl-label-status.idle{color:var(--idle);}
+  .tl-scroll{
+    flex:1;
+    overflow-x:auto;
+    overflow-y:hidden;
+  }
+  .tl-inner{position:relative;}
+  .tl-axis{height:38px;position:relative;}
+  .tl-tick{
+    position:absolute;
+    top:0;
+    height:100%;
+  }
+  .tl-tick-line{
+    position:absolute;
+    top:18px;
+    bottom:0;
+    left:0;
+    width:1px;
+    background:var(--card-border);
+  }
+  .tl-tick-label{
+    position:absolute;
+    top:18px;
+    left:4px;
+    font-size:10px;
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .tl-day-label{
+    position:absolute;
+    top:2px;
+    left:4px;
+    font-size:11px;
+    font-weight:700;
+    color:var(--text);
+    white-space:nowrap;
+  }
+  .tl-row{
+    position:relative;
+    height:64px;
+    border-top:1px solid var(--card-border);
+  }
+  .tl-grid-line{
+    position:absolute;
+    top:0;
+    bottom:0;
+    width:1px;
+    background:rgba(217,217,217,0.06);
+  }
+  .tl-now-line{
+    position:absolute;
+    top:0;
+    bottom:0;
+    width:2px;
+    background:var(--accent);
+    z-index:3;
+  }
+  .tl-bar{
+    position:absolute;
+    top:14px;
+    height:36px;
+    border-radius:7px;
+    background:repeating-linear-gradient(
+      135deg,
+      var(--printing) 0 8px,
+      #d99a2f 8px 16px
+    );
+    display:flex;
+    align-items:center;
+    padding:0 10px;
+    overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,0.4);
+  }
+  .tl-bar-label{
+    font-size:12px;
+    font-weight:700;
+    color:#2A1E08;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    overflow:hidden;
+  }
+  .tl-bar.queue{
+    background:repeating-linear-gradient(
+      135deg,
+      #6FA8DC 0 8px,
+      #5B91C5 8px 16px
+    );
+  }
+  .tl-bar.queue .tl-bar-label{color:#102235;}
+
+  .tl-idle-note{
+    position:absolute;
+    top:0;
+    left:12px;
+    height:100%;
+    display:flex;
+    align-items:center;
+    font-size:12px;
+    color:var(--muted);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>프린터 대기열</h1>
+      <p class="sub">Bambu Lab 프린터 2대 · 출력 중에도 미리 순서를 등록하세요</p>
+    </div>
+    <div class="me-box">
+      <label for="myName">내 이름</label>
+      <input id="myName" type="text" placeholder="이름 입력" maxlength="12">
+    </div>
+  </header>
+
+  <figure class="hero">
+    <img src="/static/printer-room-hero.jpg" alt="프린터(좌)와 프린터(우)" width="1344" height="756" fetchpriority="high" decoding="async">
+  </figure>
+
+  <div class="timeline-section">
+    <div class="timeline-title">한눈에 보기</div>
+    <div id="timelineWrap" class="timeline-body"></div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="note">출력을 시작할 때 "출력 시작"을 눌러 상태를 공유하고, 완료되면 반드시 "출력 완료"를 눌러 다음 사람에게 넘겨주세요. 이 화면은 모든 사용자에게 동일하게 보입니다.</p>
+
+  <p class="status-line" id="statusLine"></p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const POLL_MS = 4000;
+
+let state = { printers: {}, queues: {} };
+let openForm = null;
+let pollTimer = null;
+
+// 출력 완료 시 브라우저 탭 제목 깜빡임 상태
+let titleFlashTimer = null;
+let titleFlashOriginal = document.title;
+
+function startTitleFlash(){
+  stopTitleFlash();
+  titleFlashOriginal = document.title || '프린터 대기열';
+  let flashOn = false;
+
+  titleFlashTimer = setInterval(()=>{
+    flashOn = !flashOn;
+    document.title = flashOn ? '🔔 출력 완료!' : titleFlashOriginal;
+  }, 700);
+}
+
+function stopTitleFlash(){
+  if(titleFlashTimer){
+    clearInterval(titleFlashTimer);
+    titleFlashTimer = null;
+  }
+  document.title = titleFlashOriginal || '프린터 대기열';
+}
+
+function getMyName(){
+  return document.getElementById('myName').value.trim();
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._hideTimer);
+  t._hideTimer = setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+function setStatusLine(msg){
+  document.getElementById('statusLine').textContent = msg;
+}
+
+async function api(path, body){
+  const res = await fetch(API_BASE_URL + path, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body || {})
+  });
+  return res.json();
+}
+
+async function loadState(silent, preserveOpenForm=false){
+  try{
+    const res = await fetch(API_BASE_URL + '/api/state');
+    if(!res.ok) throw new Error('bad response');
+
+    const previousState = state;
+    state = await res.json();
+
+    // 다른 사용자가 '출력 완료'를 눌러 출력 중 → 사용 가능으로 바뀐 경우
+    if(previousState && previousState.printers && state.printers){
+      Object.keys(state.printers).forEach(id=>{
+        const before = previousState.printers[id];
+        const after = state.printers[id];
+        if(before && after &&
+           before.status === 'printing' &&
+           after.status !== 'printing'){
+          startTitleFlash();
+        }
+      });
+    }
+
+    const formPrinter = openForm && state.printers[openForm.printerId];
+
+    // 대기열 등록 창은 프린터가 출력 중인 동안에도 유지해야 합니다.
+    // 다른 사용자가 출력 시작한 경우 닫아야 하는 것은 '출력 시작' 입력창뿐입니다.
+    const isQueueForm = openForm && openForm.type === 'queue';
+    const canKeepForm =
+      preserveOpenForm &&
+      formPrinter &&
+      (isQueueForm || formPrinter.status !== 'printing');
+
+    if(!canKeepForm){
+      const formWasTaken =
+        preserveOpenForm &&
+        openForm &&
+        openForm.type === 'start' &&
+        formPrinter &&
+        formPrinter.status === 'printing';
+
+      if(formWasTaken) openForm = null;
+      render();
+      if(formWasTaken) showToast('다른 사용자가 먼저 출력을 시작해 입력 창을 닫았습니다.');
+    }
+    if(!silent) setStatusLine('');
+  }catch(e){
+    if(!silent) setStatusLine('서버에 연결할 수 없습니다 — 서버(app.py)가 켜져 있는지 확인해 주세요.');
+  }
+}
+
+function fmtDuration(minutes){
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const parts = [];
+  if(hours) parts.push(`${hours}시간`);
+  if(mins || !hours) parts.push(`${mins}분`);
+  return parts.join(' ');
+}
+
+function fmtElapsed(ms){
+  const totalSec = Math.floor(ms/1000);
+  const h = Math.floor(totalSec/3600);
+  const m = Math.floor((totalSec%3600)/60);
+  const s = totalSec%60;
+  const pad = n=>String(n).padStart(2,'0');
+  return h>0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function fmtClock(timestamp){
+  const date = new Date(timestamp);
+  const hours = String(date.getHours()).padStart(2,'0');
+  const minutes = String(date.getMinutes()).padStart(2,'0');
+  return `${hours}시 ${minutes}분`;
+}
+
+function render(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  ['p1','p2'].forEach(id=>{
+    if(state.printers[id]) grid.appendChild(renderCard(id));
+  });
+  renderTimeline(state);
+}
+
+const PX_PER_HOUR = 20;
+const TICK_HOURS = 3;
+
+function computeTimelineWindow(state){
+  const dayStart = new Date();
+  dayStart.setHours(0,0,0,0);
+  let windowEnd = new Date(dayStart.getTime() + 3*24*3600*1000); // 기본 3일치
+
+  Object.entries(state.printers || {}).forEach(([id,p])=>{
+    let cursor = Date.now();
+
+    if(p.status === 'printing' && p.startedAt){
+      const start = new Date(p.startedAt).getTime();
+      const end = p.etaMinutes ? start + p.etaMinutes*60000 : Date.now();
+      cursor = end;
+
+      if(end > windowEnd.getTime()){
+        const extended = new Date(end);
+        extended.setHours(24,0,0,0);
+        windowEnd = extended;
+      }
+    }
+
+    const queue = (state.queues && state.queues[id]) || [];
+    queue.forEach(q=>{
+      const duration = Number(q.etaMinutes) > 0
+        ? Number(q.etaMinutes)*60000
+        : 60*60000;
+      cursor += duration;
+
+      if(cursor > windowEnd.getTime()){
+        const extended = new Date(cursor);
+        extended.setHours(24,0,0,0);
+        windowEnd = extended;
+      }
+    });
+  });
+  return { start: dayStart, end: windowEnd };
+}
+
+function tlHourLabel(date){
+  const h = date.getHours();
+  if(h === 0) return '오전 12:00';
+  if(h < 12) return `오전 ${h}:00`;
+  if(h === 12) return '오후 12:00';
+  return `오후 ${h-12}:00`;
+}
+
+function tlDayLabel(date){
+  return `${date.getMonth()+1}월 ${date.getDate()}일`;
+}
+
+function renderTimeline(state){
+  const wrap = document.getElementById('timelineWrap');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+
+  const { start, end } = computeTimelineWindow(state);
+  const totalHours = (end.getTime() - start.getTime()) / 3600000;
+  const totalWidth = totalHours * PX_PER_HOUR;
+  const now = new Date();
+
+  const printerIds = ['p1','p2'].filter(id => state.printers && state.printers[id]);
+
+  const labels = document.createElement('div');
+  labels.className = 'tl-labels';
+  const spacer = document.createElement('div');
+  spacer.className = 'tl-label-spacer';
+  labels.appendChild(spacer);
+
+  printerIds.forEach(id=>{
+    const p = state.printers[id];
+    const isPrinting = p.status === 'printing';
+    const row = document.createElement('div');
+    row.className = 'tl-label-row';
+    row.innerHTML = `
+      <div class="tl-label-name">${escapeHtml(p.name)}</div>
+      <div class="tl-label-status ${isPrinting?'printing':'idle'}">${isPrinting ? '출력중 · '+escapeHtml(p.user||'') : '사용가능'}</div>
+    `;
+    labels.appendChild(row);
+  });
+  wrap.appendChild(labels);
+
+  const scroll = document.createElement('div');
+  scroll.className = 'tl-scroll';
+  const inner = document.createElement('div');
+  inner.className = 'tl-inner';
+  inner.style.width = totalWidth + 'px';
+
+  const axis = document.createElement('div');
+  axis.className = 'tl-axis';
+  axis.style.width = totalWidth + 'px';
+
+  for(let h=0; h<=totalHours; h+=TICK_HOURS){
+    const tickTime = new Date(start.getTime() + h*3600000);
+    const tick = document.createElement('div');
+    tick.className = 'tl-tick';
+    tick.style.left = (h * PX_PER_HOUR) + 'px';
+
+    const line = document.createElement('div');
+    line.className = 'tl-tick-line';
+    tick.appendChild(line);
+
+    if(tickTime.getHours() === 0){
+      const dayLabel = document.createElement('div');
+      dayLabel.className = 'tl-day-label';
+      dayLabel.textContent = tlDayLabel(tickTime);
+      tick.appendChild(dayLabel);
+    }else{
+      const label = document.createElement('div');
+      label.className = 'tl-tick-label';
+      label.textContent = tlHourLabel(tickTime);
+      tick.appendChild(label);
+    }
+    axis.appendChild(tick);
+  }
+  inner.appendChild(axis);
+
+  const nowOffsetHours = (now.getTime() - start.getTime()) / 3600000;
+  if(nowOffsetHours >= 0 && nowOffsetHours <= totalHours){
+    const nowLine = document.createElement('div');
+    nowLine.className = 'tl-now-line';
+    nowLine.style.left = (nowOffsetHours * PX_PER_HOUR) + 'px';
+    nowLine.style.top = '0';
+    nowLine.style.height = (38 + printerIds.length * 64) + 'px';
+    inner.appendChild(nowLine);
+  }
+
+  printerIds.forEach(id=>{
+    const p = state.printers[id];
+    const row = document.createElement('div');
+    row.className = 'tl-row';
+    row.style.width = totalWidth + 'px';
+
+    let cursorMs = now.getTime();
+
+    if(p.status === 'printing' && p.startedAt){
+      const startMs = new Date(p.startedAt).getTime();
+      const endMs = p.etaMinutes
+        ? startMs + p.etaMinutes*60000
+        : Math.max(now.getTime(), startMs + 5*60000);
+
+      cursorMs = endMs;
+
+      const bar = document.createElement('div');
+      bar.className = 'tl-bar';
+      bar.style.left = (((startMs - start.getTime()) / 3600000) * PX_PER_HOUR) + 'px';
+      bar.style.width = (Math.max((endMs-startMs)/3600000, 0.15) * PX_PER_HOUR) + 'px';
+      bar.title = `${p.user || ''} · ${fmtClock(startMs)} 시작 · 출력 중`;
+
+      const barLabel = document.createElement('div');
+      barLabel.className = 'tl-bar-label';
+      barLabel.textContent = p.user || '출력중';
+      bar.appendChild(barLabel);
+      row.appendChild(bar);
+    }
+
+    const queue = state.queues[id] || [];
+    queue.forEach(q=>{
+      const durationMs = Number(q.etaMinutes) > 0
+        ? Number(q.etaMinutes)*60000
+        : 60*60000;
+
+      const qStart = cursorMs;
+      const qEnd = qStart + durationMs;
+
+      const bar = document.createElement('div');
+      bar.className = 'tl-bar queue';
+      bar.style.left = (((qStart - start.getTime()) / 3600000) * PX_PER_HOUR) + 'px';
+      bar.style.width = (Math.max(durationMs/3600000, 0.15) * PX_PER_HOUR) + 'px';
+      bar.title = `${q.name || ''} · 예상 ${fmtDuration(q.etaMinutes || 60)}`;
+
+      const barLabel = document.createElement('div');
+      barLabel.className = 'tl-bar-label';
+      barLabel.textContent = q.name || '대기';
+      bar.appendChild(barLabel);
+      row.appendChild(bar);
+
+      cursorMs = qEnd;
+    });
+
+    if(!p.status || p.status !== 'printing'){
+      const hasQueue = queue.length > 0;
+      if(!hasQueue){
+        const note = document.createElement('div');
+        note.className = 'tl-idle-note';
+        note.textContent = '사용 가능';
+        row.appendChild(note);
+      }
+    }
+
+    inner.appendChild(row);
+  });
+
+  scroll.appendChild(inner);
+  wrap.appendChild(scroll);
+
+  if(!wrap._scrolledOnce){
+    const targetScroll = Math.max(0, (nowOffsetHours * PX_PER_HOUR) - 200);
+    scroll.scrollLeft = targetScroll;
+    wrap._scrolledOnce = true;
+  }
+}
+
+function renderCard(id){
+  const printer = state.printers[id];
+  const queue = state.queues[id] || [];
+  const myName = getMyName();
+  const isPrinting = printer.status === 'printing';
+
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  const top = document.createElement('div');
+  top.className = 'card-top';
+  top.innerHTML = `
+    <div class="printer-name"><span class="dot ${isPrinting?'printing':'idle'}"></span>${printer.name}</div>
+    <div class="badge ${isPrinting?'printing':'idle'}">${isPrinting?'출력 중':'대기 없음 · 사용 가능'}</div>
+  `;
+  card.appendChild(top);
+
+  if(isPrinting){
+    const info = document.createElement('div');
+    info.className = 'job-info';
+    const eta = printer.etaMinutes ? `예상 ${fmtDuration(printer.etaMinutes)}` : '예상 시간 미입력';
+    info.innerHTML = `사용자: <b>${escapeHtml(printer.user||'익명')}</b> · ${eta}`;
+    card.appendChild(info);
+
+    const timerEl = document.createElement('div');
+    const startedAt = printer.startedAt ? new Date(printer.startedAt).getTime() : Date.now();
+    const etaMs = printer.etaMinutes ? printer.etaMinutes*60000 : null;
+    const updateTimer = ()=>{
+      const elapsed = Date.now() - startedAt;
+      let cls = 'timer';
+      let label;
+      if(etaMs){
+        const remaining = etaMs - elapsed;
+        if(remaining > 0){
+          label = fmtElapsed(remaining) + ' 남음';
+        }else{
+          cls += ' over';
+          label = fmtElapsed(Math.abs(remaining)) + ' 초과';
+        }
+      }else{
+        label = fmtElapsed(elapsed) + ' 경과';
+      }
+      timerEl.className = cls;
+      timerEl.textContent = label;
+    };
+    updateTimer();
+    timerEl._interval = setInterval(updateTimer, 1000);
+    card.appendChild(timerEl);
+
+    if(etaMs){
+      const completionEl = document.createElement('div');
+      completionEl.className = 'completion-time';
+      completionEl.textContent = `${fmtClock(startedAt + etaMs)} 완료 예정`;
+      card.appendChild(completionEl);
+    }
+  }
+
+  card.appendChild(divider());
+
+  const actions = document.createElement('div');
+  actions.className = 'row';
+
+  if(!isPrinting){
+    actions.appendChild(button('출력 시작', 'primary', ()=>toggleForm(id, 'start')));
+  }else{
+    // 출력 완료는 현재 출력 중인 사용자 본인만 누를 수 있습니다.
+    const isMyPrint = !!myName && printer.user === myName;
+    const completeButton = button(
+      '출력 완료',
+      isMyPrint ? 'warn' : 'ghost',
+      isMyPrint
+        ? ()=>completeJob(id)
+        : ()=>showToast(
+            printer.user
+              ? `현재 출력 사용자는 ${printer.user}님입니다. 등록한 사용자와 이름이 다릅니다.`
+              : '현재 출력 사용자를 확인할 수 없습니다.'
+          )
+    );
+    if(!isMyPrint){
+      completeButton.disabled = true;
+      completeButton.title = printer.user
+        ? `현재 출력 사용자: ${printer.user}님`
+        : '현재 출력 사용자를 확인할 수 없습니다.';
+    }
+    actions.appendChild(completeButton);
+
+    const alreadyQueued = queue.some(q=>q.name === myName);
+    if(myName && !alreadyQueued){
+      actions.appendChild(button('대기열 등록', 'primary', ()=>toggleForm(id, 'queue')));
+    }else if(!myName){
+      actions.appendChild(button('대기열 등록 (이름 입력 필요)', 'ghost', ()=>showToast('먼저 상단에 내 이름을 입력해 주세요.')));
+    }
+  }
+  card.appendChild(actions);
+
+  if(openForm && openForm.printerId === id){
+    if(openForm.type === 'start'){
+      card.appendChild(renderStartForm(id));
+    }else if(openForm.type === 'queue'){
+      card.appendChild(renderQueueForm(id));
+    }
+  }
+
+  card.appendChild(divider());
+
+  const qTitle = document.createElement('div');
+  qTitle.className = 'queue-title';
+  qTitle.innerHTML = `<span>대기열</span><span>${queue.length}명</span>`;
+  card.appendChild(qTitle);
+
+  if(queue.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'empty-queue';
+    empty.textContent = isPrinting ? '아직 대기 중인 사람이 없습니다.' : '출력 중이 아닙니다.';
+    card.appendChild(empty);
+  }else{
+    const ul = document.createElement('ul');
+    ul.className = 'queue-list';
+    queue.forEach((q, idx)=>{
+      const li = document.createElement('li');
+      const isMe = q.name === myName;
+      const canStart = !isPrinting && idx === 0;
+
+      if(isMe) li.className = 'me';
+
+      if(canStart){
+        li.classList.add('queue-first-start');
+        li.title = '대기열 1번입니다. 등록한 이름과 동일하면 클릭하여 바로 출력을 시작합니다.';
+      }
+
+      const left = document.createElement('span');
+      const etaPart = q.etaMinutes ? ` · 예상 ${fmtDuration(q.etaMinutes)}` : '';
+      const leaveTag = q.leaveBeforeEnd ? '<span class="leave-tag">🏃 퇴근 전 출력 예정</span>' : '';
+      const startHint = canStart ? '<span class="start-hint">▶ 클릭하여 출력 시작</span>' : '';
+
+      left.innerHTML = `<span class="pos">${idx+1}</span>${escapeHtml(q.name)}${isMe?' (나)':''}${etaPart}${leaveTag}${startHint}`;
+      li.appendChild(left);
+
+      if(isMe){
+        li.appendChild(button('취소', 'ghost', (event)=>{
+          event.stopPropagation();
+          leaveQueue(id);
+        }));
+      }
+
+      if(canStart){
+        li.addEventListener('click', ()=>startQueuedJob(id));
+      }
+
+      ul.appendChild(li);
+    });
+    card.appendChild(ul);
+  }
+
+  return card;
+}
+
+function divider(){
+  const d = document.createElement('div');
+  d.className = 'divider';
+  return d;
+}
+
+function button(label, cls, onClick){
+  const b = document.createElement('button');
+  b.className = cls;
+  b.textContent = label;
+  b.onclick = onClick;
+  return b;
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function toggleForm(printerId, type){
+  openForm = (openForm && openForm.printerId === printerId && openForm.type === type) ? null : {printerId, type};
+  render();
+}
+
+function createNameDisplay(){
+  const div = document.createElement('div');
+  div.className = 'name-display';
+  const name = getMyName();
+  if(name){
+    div.textContent = `사용자: ${name}`;
+  }else{
+    div.textContent = '⚠️ 상단에 이름을 먼저 입력해주세요';
+    div.classList.add('warn-text');
+  }
+  return div;
+}
+
+function refreshNameDisplays(){
+  const name = getMyName();
+  document.querySelectorAll('.name-display').forEach(el=>{
+    if(name){
+      el.textContent = `사용자: ${name}`;
+      el.classList.remove('warn-text');
+    }else{
+      el.textContent = '⚠️ 상단에 이름을 먼저 입력해주세요';
+      el.classList.add('warn-text');
+    }
+  });
+}
+
+function makeTimeSelect(start, end, unit, ariaLabel){
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', ariaLabel);
+  for(let value=start; value<=end; value++){
+    const option = document.createElement('option');
+    option.value = String(value);
+    option.textContent = `${value}${unit}`;
+    select.appendChild(option);
+  }
+  return select;
+}
+
+function renderStartForm(printerId){
+  const wrap = document.createElement('div');
+  wrap.className = 'inline-form';
+
+  const fields = document.createElement('div');
+  fields.className = 'fields';
+
+  fields.appendChild(createNameDisplay());
+
+  const etaHourSelect = makeTimeSelect(0, 48, '시간', '예상 시간');
+  etaHourSelect.value = '1';
+  fields.appendChild(etaHourSelect);
+  wrap.appendChild(fields);
+
+  const actions = document.createElement('div');
+  actions.className = 'form-actions';
+  actions.appendChild(button('취소', 'ghost', ()=>{openForm=null;render();}));
+  actions.appendChild(button('시작 확정', 'primary', ()=>{
+    const name = getMyName();
+    if(!name){
+      showToast('상단에 이름을 먼저 입력해 주세요.');
+      return;
+    }
+    const eta = Number(etaHourSelect.value)*60;
+    startJob(printerId, name, eta);
+  }));
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+function renderQueueForm(printerId){
+  const wrap = document.createElement('div');
+  wrap.className = 'inline-form';
+
+  const fields = document.createElement('div');
+  fields.className = 'fields';
+
+  fields.appendChild(createNameDisplay());
+
+  const etaHourSelect = makeTimeSelect(0, 48, '시간', '예상 시간');
+  etaHourSelect.value = '1';
+  fields.appendChild(etaHourSelect);
+  wrap.appendChild(fields);
+
+  const checkRow = document.createElement('label');
+  checkRow.className = 'checkbox-row';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkRow.appendChild(checkbox);
+  checkRow.appendChild(document.createTextNode('퇴근 전 출력 예정 (순서 양보 가능)'));
+  wrap.appendChild(checkRow);
+
+  const actions = document.createElement('div');
+  actions.className = 'form-actions';
+  actions.appendChild(button('취소', 'ghost', ()=>{openForm=null;render();}));
+  actions.appendChild(button('등록', 'primary', ()=>{
+    const name = getMyName();
+    if(!name){
+      showToast('상단에 이름을 먼저 입력해 주세요.');
+      return;
+    }
+    const eta = Number(etaHourSelect.value)*60;
+    joinQueue(printerId, eta, checkbox.checked);
+  }));
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+async function startJob(printerId, name, etaMinutes){
+  const res = await api('/api/start', {printer_id:printerId, name, eta_minutes:etaMinutes});
+  if(!res.ok){
+    showToast(res.error || '오류가 발생했습니다.');
+    return;
+  }
+  openForm = null;
+  await loadState(true);
+  showToast(`${state.printers[printerId].name} 출력을 시작했습니다.`);
+}
+
+async function completeJob(printerId){
+  const res = await api('/api/complete', {printer_id:printerId, name:getMyName()});
+  if(!res.ok){
+    showToast(res.error || '오류가 발생했습니다.');
+    return;
+  }
+  await loadState(true);
+  showToast(res.next_name ? `출력 완료! 다음 차례: ${res.next_name}님` : '출력 완료로 표시했습니다.');
+}
+
+async function startQueuedJob(printerId){
+  const name = getMyName();
+
+  if(!name){
+    showToast('상단에 내 이름을 입력해 주세요.');
+    return;
+  }
+
+  const res = await api('/api/queue/start', {
+    printer_id: printerId,
+    name
+  });
+
+  if(!res.ok){
+    showToast(res.error || '대기열 출력 시작에 실패했습니다.');
+    await loadState(true);
+    return;
+  }
+
+  openForm = null;
+  state = res.state;
+  render();
+  showToast(`${state.printers[printerId].name} 출력이 시작되었습니다.`);
+}
+
+async function joinQueue(printerId, etaMinutes, leaveBeforeEnd){
+  const name = getMyName();
+  if(!name){
+    showToast('먼저 상단에 내 이름을 입력해 주세요.');
+    return;
+  }
+  const res = await api('/api/queue/join', {
+    printer_id: printerId,
+    name,
+    eta_minutes: etaMinutes,
+    leave_before_end: !!leaveBeforeEnd
+  });
+  if(!res.ok){
+    showToast(res.error || '오류가 발생했습니다.');
+    return;
+  }
+  openForm = null;
+  await loadState(true);
+  showToast('대기열에 등록되었습니다.');
+}
+
+async function leaveQueue(printerId){
+  const name = getMyName();
+  const res = await api('/api/queue/leave', {printer_id:printerId, name});
+  if(!res.ok){
+    showToast(res.error || '오류가 발생했습니다.');
+    return;
+  }
+  await loadState(true);
+  showToast('대기열에서 나갔습니다.');
+}
+
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden) stopTitleFlash();
+});
+
+window.addEventListener('focus', ()=>{
+  stopTitleFlash();
+});
+
+document.getElementById('myName').addEventListener('input', ()=>{
+  refreshNameDisplays();
+  if(!openForm) render();
+});
+loadState(false);
+pollTimer = setInterval(()=>loadState(true, true), POLL_MS);
+setInterval(()=>{ if(state.printers && Object.keys(state.printers).length) renderTimeline(state); }, 1000);
+</script>
+</body>
+</html>

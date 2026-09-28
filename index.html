@@ -400,7 +400,7 @@
   </header>
 
   <figure class="hero">
-    <img src="/static/printer-room-hero.jpg" alt="프린터(좌)와 프린터(우)" width="1344" height="756" fetchpriority="high" decoding="async">
+    <img src="https://mhyu.pythonanywhere.com/static/printer-room-hero.jpg" alt="프린터(좌)와 프린터(우)" width="1344" height="756" fetchpriority="high" decoding="async">
   </figure>
 
   <div class="timeline-section">
@@ -418,6 +418,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
+const API_BASE_URL = 'https://mhyu.pythonanywhere.com';
 const POLL_MS = 4000;
 
 let state = { printers: {}, queues: {} };
@@ -464,12 +465,18 @@ function setStatusLine(msg){
 }
 
 async function api(path, body){
-  const res = await fetch(API_BASE_URL + path, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(body || {})
-  });
-  return res.json();
+  try{
+    const res = await fetch(API_BASE_URL + path, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body || {})
+    });
+    const data = await res.json();
+    if(!res.ok) return {ok:false, error:data.error || '요청을 처리하지 못했습니다.'};
+    return data;
+  }catch(e){
+    return {ok:false, error:'서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.'};
+  }
 }
 
 async function loadState(silent, preserveOpenForm=false){
